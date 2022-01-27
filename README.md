@@ -1,11 +1,14 @@
 # AWTRIX-Standalone
+![Visitors](https://visitor-badge.glitch.me/badge?page_id=zys91.AWTRIX-Standalone)
+![GitHub Stars](https://img.shields.io/github/stars/zys91/AWTRIX-Standalone.svg?style=flat-square&label=Stars&logo=github)
+![GitHub Forks](https://img.shields.io/github/forks/zys91/AWTRIX-Standalone.svg?style=flat-square&label=Forks&logo=github)
 
 Awtrix 独立版 | 无需服务器端 | 覆盖基本常用功能 | 像素钟
 
 ## 食用提醒
 
 1. 需自行配置相关参数后编译下载固件
-2. 仅支持HTU21DF 温湿度传感器，其他型号需自行修改代码
+2. 仅支持HTU21DF温湿度传感器，其他型号需自行修改代码
 3. 留意设备管脚信息，WS2812B像素屏的数据管脚与原Awtrix的不同，已修改为 D5
 
 ## 已有功能
@@ -15,6 +18,7 @@ Awtrix 独立版 | 无需服务器端 | 覆盖基本常用功能 | 像素钟
 4. 室外空气质量
 5. B站粉丝数
 6. 油管粉丝数
+7. 支持夜间模式
 
 ## 设备信息
 1. 主控：ESP8266 NodeMCU开发板
@@ -51,6 +55,7 @@ int nightBeginHours = 22;    // 夜间模式开启时间-小时 根据需求修�
 int nightBeginMinutes = 30;  // 夜间模式开启时间-分钟 根据需求修改 默认30分
 int nightEndHours = 7;       // 夜间模式结束时间-小时 根据需求修改 默认7点
 int nightEndMinutes = 0;     // 夜间模式结束时间-分钟 根据需求修改 默认0分
+int nightBri = 10;           // 夜间模式固定显示亮度 默认10
 ```
 ## 致谢
 1. [awtrix/AWTRIX2.0-Controller](https://github.com/awtrix/AWTRIX2.0-Controller)

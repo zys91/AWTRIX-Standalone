@@ -44,6 +44,7 @@ int nightBeginHours = 22;    // 夜间模式开启时间-小时 根据需求修�
 int nightBeginMinutes = 30;  // 夜间模式开启时间-分钟 根据需求修改 默认30分
 int nightEndHours = 7;       // 夜间模式结束时间-小时 根据需求修改 默认7点
 int nightEndMinutes = 0;     // 夜间模式结束时间-分钟 根据需求修改 默认0分
+int nightBri = 10;           // 夜间模式固定显示亮度 默认10
 bool nightMode = false;
 /************************* 参数配置区 *************************/
 
@@ -67,7 +68,6 @@ DoubleResetDetect drd(DRD_TIMEOUT, DRD_ADDRESS);
 
 // LDR Config
 #define LDR_PIN A0 // 光敏电阻测量管脚为 A0
-int ldrState = 0;  // 0 = None
 int LDRvalue = 0;
 int minBrightness = 5;
 int maxBrightness = 100;
@@ -221,60 +221,35 @@ void solveTime(time_t timeInput, tmElements_t &tm)
 
 String httpsRequest(const String &url, int *errCode)
 {
-  String urlTemp = url;
-  urlTemp.replace("https://", "");
-  int splitIndex = urlTemp.indexOf('/');
-  const String &httpsServer = urlTemp.substring(0, splitIndex);
-  const String &api = urlTemp.substring(splitIndex);
-  Serial.print("Connecting to ");
-  Serial.print(httpsServer);
-  BearSSL::WiFiClientSecure *httpsClient = new BearSSL::WiFiClientSecure();
-  httpsClient->setInsecure();
-  httpsClient->setTimeout(2000);
-  int retries = 6;
-  while (!httpsClient->connect(httpsServer, 443) && (retries-- > 0))
-  {
-    Serial.print(".");
-    delay(1000);
-  }
-  Serial.println();
+  // https请求
+  std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
+  client->setInsecure(); // 不进行服务器身份认证
+  HTTPClient https;
   String res;
-  if (!httpsClient->connected())
-  {
-    Serial.println("Failed to connect, going back to sleep");
-    *errCode = -1;
-    httpsClient->stop();
-  }
-  else
-  {
-    Serial.print("Request resource: ");
-    httpsClient->print(String("GET ") + api +
-                       " HTTP/1.1\r\n" +
-                       "Host: " + httpsServer + "\r\n" +
-                       "Connection: close\r\n\r\n");
-    int timeout = 5 * 10; // 5 seconds
-    while (!httpsClient->available() && (timeout-- > 0))
-    {
-      delay(100);
-    }
-    if (!httpsClient->available())
-    {
-      Serial.println("No response, going back to sleep");
-      *errCode = -2;
-      httpsClient->stop();
+
+  if (https.begin(*client, url))
+  {                             // HTTPS连接成功
+    int httpCode = https.GET(); // 请求
+
+    if (httpCode > 0)
+    { // 错误返回负值
+      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+      { // 服务器响应
+        *errCode = 0;
+        String payload = https.getString();
+        res = payload.substring(payload.indexOf('{'));
+      }
     }
     else
-    {
-      while (httpsClient->available())
-      {
-        res += char(httpsClient->read());
-      }
-      res = res.substring(res.indexOf('{'));
-      Serial.println("\nClosing connection");
-      httpsClient->stop();
+    { // 错误返回负值
+      *errCode = -1;
     }
+    https.end();
   }
-  delete httpsClient;
+  else
+  { // HTTPS连接失败
+    *errCode = -2;
+  }
   return res;
 }
 
@@ -370,37 +345,37 @@ void hardwareAnimatedCheck(MsgType typ, int x, int y)
 
 void hardwareAnimatedSearch(int typ, int x, int y)
 {
-	for (int i = 0; i < 4; i++)
-	{
-		matrix->clear();
-		matrix->setTextColor(0xFFFF);
-		if (typ == 0)
-		{
-			matrix->setCursor(7, 6);
-			matrix->print("WiFi");
-		}
-		switch (i)
-		{
-		case 3:
-			matrix->drawPixel(x, y, 0x22ff);
-			matrix->drawPixel(x + 1, y + 1, 0x22ff);
-			matrix->drawPixel(x + 2, y + 2, 0x22ff);
-			matrix->drawPixel(x + 3, y + 3, 0x22ff);
-			matrix->drawPixel(x + 2, y + 4, 0x22ff);
-			matrix->drawPixel(x + 1, y + 5, 0x22ff);
-			matrix->drawPixel(x, y + 6, 0x22ff);
-		case 2:
-			matrix->drawPixel(x - 1, y + 2, 0x22ff);
-			matrix->drawPixel(x, y + 3, 0x22ff);
-			matrix->drawPixel(x - 1, y + 4, 0x22ff);
-		case 1:
-			matrix->drawPixel(x - 3, y + 3, 0x22ff);
-		case 0:
-			break;
-		}
-		matrix->show();
-		delay(100);
-	}
+  for (int i = 0; i < 4; i++)
+  {
+    matrix->clear();
+    matrix->setTextColor(0xFFFF);
+    if (typ == 0)
+    {
+      matrix->setCursor(7, 6);
+      matrix->print("WiFi");
+    }
+    switch (i)
+    {
+    case 3:
+      matrix->drawPixel(x, y, 0x22ff);
+      matrix->drawPixel(x + 1, y + 1, 0x22ff);
+      matrix->drawPixel(x + 2, y + 2, 0x22ff);
+      matrix->drawPixel(x + 3, y + 3, 0x22ff);
+      matrix->drawPixel(x + 2, y + 4, 0x22ff);
+      matrix->drawPixel(x + 1, y + 5, 0x22ff);
+      matrix->drawPixel(x, y + 6, 0x22ff);
+    case 2:
+      matrix->drawPixel(x - 1, y + 2, 0x22ff);
+      matrix->drawPixel(x, y + 3, 0x22ff);
+      matrix->drawPixel(x - 1, y + 4, 0x22ff);
+    case 1:
+      matrix->drawPixel(x - 3, y + 3, 0x22ff);
+    case 0:
+      break;
+    }
+    matrix->show();
+    delay(100);
+  }
 }
 
 void debuggingWithMatrix(String text)
@@ -1083,7 +1058,7 @@ void setup()
 
   if (updateAllData())
   {
-    // Serial.println("Get Data OK!");
+    Serial.println("Get Data OK!");
     matrixBegin(0);
     matrixCoord(11, 1);
     matrixColor(255, 255, 255);
@@ -1098,20 +1073,10 @@ void setup()
 void loop()
 {
   timeClient.update();
-  checkLDR();
-
   String currentTime = timeClient.getFormattedTime();
   int currentHours = timeClient.getHours();
   int currentMinutes = timeClient.getMinutes();
-  if (currentTime.endsWith(zeroTime))
-  {
-    solveTime(timeClient.getEpochTime(), tmElements);
-    //Serial.printf("%d-%d-%d %d:%d:%d Week%d\n", tmElements.Year + 1970, tmElements.Month, tmElements.Day, tmElements.Hour, tmElements.Minute, tmElements.Second, tmElements.Wday);
-  }
-  if (currentTime.endsWith(updateTime))
-  {
-    updateAllData();
-  }
+
   if (currentHours + currentMinutes / 60.0 >= nightBeginHours + nightBeginMinutes / 60.0 || currentHours + currentMinutes / 60.0 < nightEndHours + nightEndMinutes / 60.0)
   {
     nightMode = true;
@@ -1123,12 +1088,24 @@ void loop()
 
   if (nightMode && nightModeEnable)
   {
+    matrix->setBrightness(nightBri);
     showNightModeTime();
     loopTimes = 0;
     scheduledTask = 0;
   }
   else
   {
+    if (currentTime.endsWith(zeroTime))
+    {
+      solveTime(timeClient.getEpochTime(), tmElements);
+      //Serial.printf("%d-%d-%d %d:%d:%d Week%d\n", tmElements.Year + 1970, tmElements.Month, tmElements.Day, tmElements.Hour, tmElements.Minute, tmElements.Second, tmElements.Wday);
+    }
+
+    if (currentTime.endsWith(updateTime))
+    {
+      updateAllData();
+    }
+
     if (loopTimes == showTimes)
     {
       scheduledTask++;
@@ -1141,6 +1118,8 @@ void loop()
 
     if (scheduledTask == sizeof(taskList) / sizeof(void *))
       scheduledTask = 0;
+
+    checkLDR();
     taskList[scheduledTask]();
   }
 
