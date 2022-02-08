@@ -44,7 +44,7 @@ int nightBeginHours = 22;    // 夜间模式开启时间-小时 根据需求修�
 int nightBeginMinutes = 30;  // 夜间模式开启时间-分钟 根据需求修改 默认30分
 int nightEndHours = 7;       // 夜间模式结束时间-小时 根据需求修改 默认7点
 int nightEndMinutes = 0;     // 夜间模式结束时间-分钟 根据需求修改 默认0分
-int nightBri = 10;           // 夜间模式固定显示亮度 默认10
+int nightBri = 8;            // 夜间模式固定显示亮度 默认8
 bool nightMode = false;
 /************************* 参数配置区 *************************/
 
@@ -1080,6 +1080,11 @@ void loop()
   if (currentHours + currentMinutes / 60.0 >= nightBeginHours + nightBeginMinutes / 60.0 || currentHours + currentMinutes / 60.0 < nightEndHours + nightEndMinutes / 60.0)
   {
     nightMode = true;
+  }
+  else if (currentHours + currentMinutes / 60.0 == nightEndHours + nightEndMinutes / 60.0)
+  {
+    solveTime(timeClient.getEpochTime(), tmElements);
+    updateAllData();
   }
   else
   {
