@@ -11,6 +11,7 @@
 #include <FastLED.h>
 #include <FastLED_NeoMatrix.h>
 #include <Fonts/TomThumb.h>
+#include <Ticker.h>
 
 /************************* 参数配置区 *************************/
 String UserKey = "your_apikey"; 		// 和风天气API私钥 https://dev.heweather.com/docs/start/ 需要自行申请
@@ -34,19 +35,23 @@ void showYoutube();		// Youtube粉丝数
 void (*taskList[])() = {showTime, showTempSenor, showWeather, showAQI, showBilibili, showYoutube}; // 在此处根据需求自行调节任务开关和顺序
 
 String zeroTime = "00:00:00"; // 日期更新周期 每天零点 此处不要修改
-String updateTime = "0:00";   // 天气、AQI、粉丝数据更新周期 0:00 表示每10 min更新 格式可以泛化 根据需求修改 默认10 min
-int showTimes = 10;           // 每个任务展示时间 10 s 根据需求修改 默认10 s
-int timeShowType = 0;         // 时间显示类型 0-HH:MM  1-HH:MM:SS 根据需求修改 默认HH:MM
+int updatePeriod = 30;        // 天气、AQI、粉丝数据更新周期 单位 min 根据需求修改 默认30 min
+int showPeriod = 10;          // 每个任务展示时长 单位 s 根据需求修改 默认10 s
+int timeShowType = 0;         // 时间显示类型 0-HH:MM  1-HH:MM:SS 根据需求修改 默认0-HH:MM
+int FPS = 30;                 // 刷新率 并非实际可达值 有误差 默认30
 int loopTimes = 0;
 int scheduledTask = 0;
+bool updateTimeArrived = false;
 bool nightModeEnable = true; // 夜间模式功能开启标志位 根据需求修改 默认开
 int nightBeginHours = 22;    // 夜间模式开启时间-小时 根据需求修改 默认22点
 int nightBeginMinutes = 30;  // 夜间模式开启时间-分钟 根据需求修改 默认30分
 int nightEndHours = 7;       // 夜间模式结束时间-小时 根据需求修改 默认7点
 int nightEndMinutes = 0;     // 夜间模式结束时间-分钟 根据需求修改 默认0分
-int nightBri = 8;            // 夜间模式固定显示亮度 默认8
+int nightBri = 2;            // 夜间模式固定显示亮度 默认2
 bool nightMode = false;
 /************************* 参数配置区 *************************/
+Ticker updateTimeTask;
+Ticker scheTask;
 
 WeatherNow weatherNow;
 AirQuality airQuality;
@@ -69,7 +74,7 @@ DoubleResetDetect drd(DRD_TIMEOUT, DRD_ADDRESS);
 // LDR Config
 #define LDR_PIN A0 // 光敏电阻测量管脚为 A0
 int LDRvalue = 0;
-int minBrightness = 5;
+int minBrightness = 2;
 int maxBrightness = 100;
 int newBri;
 
@@ -226,10 +231,18 @@ String httpsRequest(const String &url, int *errCode)
   client->setInsecure(); // 不进行服务器身份认证
   HTTPClient https;
   String res;
+  int tryTimes = 1;
 
   if (https.begin(*client, url))
   {                             // HTTPS连接成功
     int httpCode = https.GET(); // 请求
+    // Serial.println(httpCode);
+
+    while ((httpCode == -1) && (tryTimes < 3))
+    {
+      httpCode = https.GET();
+      tryTimes++;
+    }
 
     if (httpCode > 0)
     { // 错误返回负值
@@ -238,6 +251,7 @@ String httpsRequest(const String &url, int *errCode)
         *errCode = 0;
         String payload = https.getString();
         res = payload.substring(payload.indexOf('{'));
+        // Serial.println(payload);
       }
     }
     else
@@ -261,11 +275,13 @@ bool updateBilibiliSubscriberCount()
   const String &res = httpsRequest(url, &errCode);
   if (errCode == 0)
   {
+    // Serial.println(res);
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, res);
     biliSubscriberCount = doc["data"]["follower"].as<uint32>();
     return true;
   }
+  // Serial.println(errCode);
   return false;
 }
 
@@ -277,11 +293,13 @@ bool updateYoutubeSubscriberCount()
   const String &res = httpsRequest(url, &errCode);
   if (errCode == 0)
   {
+    // Serial.println(res);
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, res);
     youTubeSubscriberCount = doc["items"][0]["statistics"]["subscriberCount"].as<uint32>();
     return true;
   }
+  // Serial.println(errCode);
   return false;
 }
 
@@ -394,9 +412,9 @@ void updateMatrix(byte payload[], int length)
   {
   case 0:
   {
-    //Command 0: DrawText
+    // Command 0: DrawText
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y_coordinate = int(payload[3] << 8) + int(payload[4]);
 
@@ -413,9 +431,9 @@ void updateMatrix(byte payload[], int length)
   }
   case 1:
   {
-    //Command 1: DrawBMP
+    // Command 1: DrawBMP
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y_coordinate = int(payload[3] << 8) + int(payload[4]);
 
@@ -442,9 +460,9 @@ void updateMatrix(byte payload[], int length)
 
   case 2:
   {
-    //Command 2: DrawCircle
+    // Command 2: DrawCircle
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     uint16_t radius = payload[5];
@@ -453,9 +471,9 @@ void updateMatrix(byte payload[], int length)
   }
   case 3:
   {
-    //Command 3: FillCircle
+    // Command 3: FillCircle
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     uint16_t radius = payload[5];
@@ -464,9 +482,9 @@ void updateMatrix(byte payload[], int length)
   }
   case 4:
   {
-    //Command 4: DrawPixel
+    // Command 4: DrawPixel
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     matrix->drawPixel(x0_coordinate, y0_coordinate, matrix->Color(payload[5], payload[6], payload[7]));
@@ -474,9 +492,9 @@ void updateMatrix(byte payload[], int length)
   }
   case 5:
   {
-    //Command 5: DrawRect
+    // Command 5: DrawRect
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     int16_t width = payload[5];
@@ -486,9 +504,9 @@ void updateMatrix(byte payload[], int length)
   }
   case 6:
   {
-    //Command 6: DrawLine
+    // Command 6: DrawLine
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     uint16_t x1_coordinate = int(payload[5] << 8) + int(payload[6]);
@@ -499,16 +517,16 @@ void updateMatrix(byte payload[], int length)
 
   case 7:
   {
-    //Command 7: FillMatrix
+    // Command 7: FillMatrix
 
     matrix->fillScreen(matrix->Color(payload[1], payload[2], payload[3]));
     break;
   }
   case 8:
   {
-    //Command 8: DrawFilledRect
+    // Command 8: DrawFilledRect
 
-    //Prepare the coordinates
+    // Prepare the coordinates
     uint16_t x0_coordinate = int(payload[1] << 8) + int(payload[2]);
     uint16_t y0_coordinate = int(payload[3] << 8) + int(payload[4]);
     int16_t width = payload[5];
@@ -686,27 +704,42 @@ bool updateAQI()
   return false;
 }
 
-bool updateAllData()
+void updateAllData()
 {
-  bool state = true;
   for (int i = 0; i < sizeof(taskList) / sizeof(void *); i++)
   {
     if (taskList[i] == showWeather)
-      state &= updateWeather();
+      updateWeather();
     if (taskList[i] == showAQI)
-      state &= updateAQI();
+      updateAQI();
     if (taskList[i] == showBilibili)
-      state &= updateBilibiliSubscriberCount();
+      updateBilibiliSubscriberCount();
     if (taskList[i] == showYoutube)
-      state &= updateYoutubeSubscriberCount();
+      updateYoutubeSubscriberCount();
   }
-  return state;
+}
+
+void updateTime()
+{
+  updateTimeArrived = true;
+}
+
+void scheTime()
+{
+  loopTimes++;
+  if (loopTimes >= showPeriod)
+  {
+    loopTimes = 0;
+    scheduledTask++;
+    if (scheduledTask == sizeof(taskList) / sizeof(void *))
+      scheduledTask = 0;
+  }
 }
 
 void showTime()
 {
   matrixClear();
-  if (loopTimes < showTimes / 2)
+  if (loopTimes < showPeriod / 2)
   {
     matrixBegin(0);
     if (timeShowType == 0)
@@ -763,6 +796,47 @@ void showTime()
   matrixShow();
 }
 
+void showNightModeTime()
+{
+  matrixClear();
+  matrixBegin(0);
+  matrix->setBrightness(nightBri);
+  if (timeShowType == 0)
+  {
+    matrixCoord(6, 1);
+    matrixColor(30, 144, 255);
+    char timeChar[6];
+    sprintf(timeChar, "%02d:%02d", timeClient.getHours(), timeClient.getMinutes());
+    matrixStr(String(timeChar));
+  }
+  else
+  {
+    matrixCoord(1, 1);
+    matrixColor(30, 144, 255);
+    matrixStr(timeClient.getFormattedTime());
+  }
+  matrixCallback();
+  int w = timeClient.getDay() - 1;
+  if (w < 0)
+    w = 6;
+  for (int i = 0; i < 7; i++)
+  {
+    matrixBegin(6);
+    matrixCoord(2 + 4 * i, 7);
+    matrixCoord(2 + 4 * i + 2, 7);
+    if (w == i)
+    {
+      matrixColor(138, 43, 226);
+    }
+    else
+    {
+      matrixColor(173, 216, 230);
+    }
+    matrixCallback();
+  }
+  matrixShow();
+}
+
 const uint32 senorColorArr[3] ICACHE_RODATA_ATTR = {0x000000, 0xc40c0c, 0xFFFFFF};
 const uint32 senorPixels[16] ICACHE_RODATA_ATTR =
     {
@@ -779,7 +853,7 @@ void showTempSenor()
 {
   matrixClear();
   drawColorIndexFrame(senorColorArr, 8, 8, senorPixels);
-  if (loopTimes < showTimes / 2)
+  if (loopTimes < showPeriod / 2)
   {
     char tempChar[9];
     sprintf(tempChar, "%.01f", htu.readTemperature());
@@ -823,7 +897,7 @@ void showWeather()
 {
   matrixClear();
   drawColorIndexFrame(weatherColorArr, 8, 8, weatherPixels);
-  if (loopTimes < showTimes / 2)
+  if (loopTimes < showPeriod / 2)
   {
     String num = String(weather_temp) + "°";
     matrixBegin(0);
@@ -861,7 +935,7 @@ void showAQI()
   matrixClear();
   drawColorIndexFrame(aqiColorArr, 8, 8, aqiPixels);
 
-  if (loopTimes < showTimes / 2)
+  if (loopTimes < showPeriod / 2)
   {
     matrixBegin(0);
     matrixCoord((uint16_t)textCenterX(aqi_pri.length(), 4, 6), 1);
@@ -941,46 +1015,6 @@ void showYoutube()
   matrixShow();
 }
 
-void showNightModeTime()
-{
-  matrixClear();
-  matrixBegin(0);
-  if (timeShowType == 0)
-  {
-    matrixCoord(6, 1);
-    matrixColor(30, 144, 255);
-    char timeChar[6];
-    sprintf(timeChar, "%02d:%02d", timeClient.getHours(), timeClient.getMinutes());
-    matrixStr(String(timeChar));
-  }
-  else
-  {
-    matrixCoord(1, 1);
-    matrixColor(30, 144, 255);
-    matrixStr(timeClient.getFormattedTime());
-  }
-  matrixCallback();
-  int w = timeClient.getDay() - 1;
-  if (w < 0)
-    w = 6;
-  for (int i = 0; i < 7; i++)
-  {
-    matrixBegin(6);
-    matrixCoord(2 + 4 * i, 7);
-    matrixCoord(2 + 4 * i + 2, 7);
-    if (w == i)
-    {
-      matrixColor(138, 43, 226);
-    }
-    else
-    {
-      matrixColor(173, 216, 230);
-    }
-    matrixCallback();
-  }
-  matrixShow();
-}
-
 void setup()
 {
   Serial.begin(115200);
@@ -1021,18 +1055,18 @@ void setup()
   }
 
   hardwareAnimatedSearch(0, 24, 0);
-  //tries to connect to last known settings
-  //if it does not connect it starts an access point with the specified name
-  //here  "AutoConnectAP" with password "password"
-  //and goes into a blocking loop awaiting configuration
+  // tries to connect to last known settings
+  // if it does not connect it starts an access point with the specified name
+  // here  "AutoConnectAP" with password "password"
+  // and goes into a blocking loop awaiting configuration
   if (!wifiManager.autoConnect("AWTRIX-Standalone", "password"))
   {
-    //Serial.println("failed to connect, we should reset as see if it connects");
+    // Serial.println("failed to connect, we should reset as see if it connects");
     ESP.reset();
     delay(5000);
   }
 
-  //if you get here you have connected to the WiFi
+  // if you get here you have connected to the WiFi
   Serial.println("connected...");
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
@@ -1055,36 +1089,27 @@ void setup()
   solveTime(timeClient.getEpochTime(), tmElements);
   weatherNow.config(UserKey, Location, Unit, Lang);
   airQuality.config(UserKey, Location, Unit, Lang);
-
-  if (updateAllData())
-  {
-    Serial.println("Get Data OK!");
-    matrixBegin(0);
-    matrixCoord(11, 1);
-    matrixColor(255, 255, 255);
-    matrixStr("OK!");
-    matrixClear();
-    matrixCallback();
-    matrixShow();
-    delay(1000);
-  }
+  updateAllData();
+  updateTimeTask.attach(updatePeriod * 60, updateTime);
+  scheTask.attach(1, scheTime);
 }
 
 void loop()
 {
   timeClient.update();
-  String currentTime = timeClient.getFormattedTime();
-  int currentHours = timeClient.getHours();
-  int currentMinutes = timeClient.getMinutes();
+  int currentTS = timeClient.getHours() * 60 + timeClient.getMinutes();
+  int nightBeginTS = nightBeginHours * 60 + nightBeginMinutes;
+  int nightEndTS = nightEndHours * 60 + nightEndMinutes;
 
-  if (currentHours + currentMinutes / 60.0 >= nightBeginHours + nightBeginMinutes / 60.0 || currentHours + currentMinutes / 60.0 < nightEndHours + nightEndMinutes / 60.0)
-  {
-    nightMode = true;
-  }
-  else if (currentHours + currentMinutes / 60.0 == nightEndHours + nightEndMinutes / 60.0)
+  if (timeClient.getFormattedTime().endsWith(zeroTime))
   {
     solveTime(timeClient.getEpochTime(), tmElements);
-    updateAllData();
+    // Serial.printf("%d-%d-%d %d:%d:%d Week%d\n", tmElements.Year + 1970, tmElements.Month, tmElements.Day, tmElements.Hour, tmElements.Minute, tmElements.Second, tmElements.Wday);
+  }
+
+  if (((nightBeginTS > nightEndTS) && (currentTS >= nightBeginTS || currentTS < nightEndTS)) || ((nightBeginTS < nightEndTS) && (currentTS >= nightBeginTS) && (currentTS < nightEndTS)))
+  {
+    nightMode = true;
   }
   else
   {
@@ -1093,40 +1118,21 @@ void loop()
 
   if (nightMode && nightModeEnable)
   {
-    matrix->setBrightness(nightBri);
     showNightModeTime();
-    loopTimes = 0;
     scheduledTask = 0;
+    loopTimes = 0;
+    updateTimeArrived = true;
   }
   else
   {
-    if (currentTime.endsWith(zeroTime))
+    if (updateTimeArrived)
     {
-      solveTime(timeClient.getEpochTime(), tmElements);
-      //Serial.printf("%d-%d-%d %d:%d:%d Week%d\n", tmElements.Year + 1970, tmElements.Month, tmElements.Day, tmElements.Hour, tmElements.Minute, tmElements.Second, tmElements.Wday);
-    }
-
-    if (currentTime.endsWith(updateTime))
-    {
+      updateTimeArrived = false;
       updateAllData();
     }
-
-    if (loopTimes == showTimes)
-    {
-      scheduledTask++;
-      loopTimes = 0;
-    }
-    else
-    {
-      loopTimes++;
-    }
-
-    if (scheduledTask == sizeof(taskList) / sizeof(void *))
-      scheduledTask = 0;
-
     checkLDR();
     taskList[scheduledTask]();
   }
 
-  delay(1000);
+  delay(1000 / FPS);
 }
