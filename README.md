@@ -1,5 +1,4 @@
 # AWTRIX-Standalone
-![Visitors](https://visitor-badge.glitch.me/badge?page_id=zys91.AWTRIX-Standalone)
 ![GitHub Stars](https://img.shields.io/github/stars/zys91/AWTRIX-Standalone.svg?style=flat-square&label=Stars&logo=github)
 ![GitHub Forks](https://img.shields.io/github/forks/zys91/AWTRIX-Standalone.svg?style=flat-square&label=Forks&logo=github)
 
